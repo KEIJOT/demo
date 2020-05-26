@@ -1,0 +1,112 @@
+{\rtf1\ansi\ansicpg1252\cocoartf2513
+\cocoatextscaling0\cocoaplatform0{\fonttbl\f0\fswiss\fcharset0 Helvetica;}
+{\colortbl;\red255\green255\blue255;}
+{\*\expandedcolortbl;;}
+\margl1440\margr1440\vieww18840\viewh12080\viewkind0
+\pard\tx566\tx1133\tx1700\tx2267\tx2834\tx3401\tx3968\tx4535\tx5102\tx5669\tx6236\tx6803\pardirnatural\partightenfactor0
+
+\f0\fs24 \cf0 const AWS = require('aws-sdk');\
+const querystring = require('querystring');\
+\
+// Set this to the region you upload the Lambda function to.\
+AWS.config.region = 'us-west-2';\
+\
+// Create the DynamoDB service object\
+var ddb = new AWS.DynamoDB(\{apiVersion: '2012-08-10'\});\
+\
+\
+// generate random uuid\
+\
+var lut = []; for (var i=0; i<256; i++) \{ lut[i] = (i<16?'0':'')+(i).toString(16); \}\
+function uuid() \{\
+    var k=['x','x','x','x','-','x','x','-','4','x','-','y','x','-','x','x','x','x','x','x'];\
+    var u='',i=0,rb=Math.random()*0xffffffff|0;\
+    while(i++<20) \{\
+        var c=k[i-1],r=rb&0xff,v=c=='x'?r:(c=='y'?(r&0x3f|0x80):(r&0xf|0x40));\
+        u+=(c=='-')?c:lut[v];rb=i%4==0?Math.random()*0xffffffff|0:rb>>8\
+    \}\
+    return u\
+\}\
+\
+// get form data\
+exports.handler = function(evt, context, callback) \{\
+    // Our raw request body will be in evt.body.\
+    const params = querystring.parse(evt.body);\
+    \
+    // Our field from the request.\
+    const fname = params['firstname'];\
+    const lname = params['lastname'];\
+    const mail = params['email'];\
+    const msg = params['message'];\
+    const newline = "\\r\\n";\
+    \
+// db section\
+    \
+var dbparams = \{\
+  TableName: 'customer',\
+  Item: \{\
+    'uuid' : \{S: uuid()\},\
+    'Email' : \{S: mail\},\
+    'FirstName' : \{S: fname\},\
+    'LastName' : \{S: lname\},\
+    'Text' : \{S: msg\}\
+  \}\
+\};\
+\
+const error = `Database update failed` + newline;\
+\
+// Call DynamoDB to add the item to the table\
+ddb.putItem(dbparams, function(err, data) \{\
+  if (err) \{\
+   callback(null, error);    \
+//    console.log("Error", err);\
+  \} else \{\
+//    console.log("Success", data);\
+// do nothing here for now\
+  \}\
+\});\
+\
+// if db update worked send back thank you msg etc etc...\
+\
+    // Generate response back to user\
+    const html = `You submitted the following information:` + newline + `FirstName:` + fname + newline + `LastName:` + lname + newline + `Email:` + mail + newline + `Message:` + msg + newline + `Email was sent to email address you provided, thank you` + newline;\
+\
+// send email to user\
+\
+// Create email params\
+const paramsmail = \{\
+  Destination: \{\
+    ToAddresses: [mail]\
+  \},\
+  Message: \{\
+    Body: \{\
+      Text: \{\
+        Charset: "UTF-8",\
+        Data: "Thank you " + fname + " " + lname + " your information has been received"\
+      \}\
+    \},\
+    Subject: \{\
+      Charset: "UTF-8",\
+      Data: fname + " " + lname\
+    \}\
+  \},\
+  Source: \'93AWS source email here\'94\
+\};\
+\
+// Create the promise and SES service object\
+const sendPromise = new AWS.SES(\{ apiVersion: "2010-12-01" \})\
+  .sendEmail(paramsmail)\
+  .promise();\
+\
+// Handle promise's fulfilled/rejected states\
+sendPromise\
+  .then(data => \{\
+//    console.log(data.MessageId);\
+  \})\
+//  .catch(err => \{\
+//    console.error(err, err.stack);\
+//  \});\
+\
+    // Return \
+    callback(null, html);\
+\};}
